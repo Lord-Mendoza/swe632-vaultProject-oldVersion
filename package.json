@@ -7,7 +7,6 @@
     "aos": "^2.3.4",
     "bootstrap": "^5.3.3",
     "lodash": "^4.17.21",
-    "moment": "^2.30.1",
     "prismjs": "^1.29.0",
     "react": "^18.3.1",
     "react-bootstrap": "^2.10.4",
@@ -21,22 +20,15 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "removedocs": "if exist docs rmdir /s /q docs 2>null",
-    "removedocs-linux": "rm -rf docs",
-    "postbuild-windows": "rename build docs",
-    "postbuild-linux": "mv build docs",
-    "build-deploy": "npm run removedocs && npm run build && npm run postbuild-windows",
-    "build-deploy-linux": "npm run removedocs-linux && npm run build && npm run postbuild-linux"
+    "removedocs": "rm -rf docs",
+    "postbuild": "rename build docs",
+    "build-deploy": "npm run removedocs && npm run build"
   },
   "eslintConfig": {
     "extends": [
       "react-app"
     ]
   },
-  "eslintIgnore": [
-    "node_modules",
-    "build/*"
-  ],
   "browserslist": {
     "production": [
       ">0.2%",
@@ -48,9 +40,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "devDependencies": {
-    "@typescript-eslint/parser": "^8.4.0",
-    "typescript": "^4.9.5"
   }
 }
