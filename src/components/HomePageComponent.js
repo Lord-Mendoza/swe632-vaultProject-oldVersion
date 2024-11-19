@@ -1,19 +1,18 @@
 import React from "react";
-import { Col, Form, Nav, Navbar, NavDropdown, Row } from "react-bootstrap";
+import { Container, Form, Nav, Navbar, NavDropdown, Row } from "react-bootstrap";
 import { Button, Icon, Menu, Segment, Sidebar } from "semantic-ui-react";
 import "aos/dist/aos.css";
 import AOS from "aos";
 import Prism from "prismjs";
 import "../styling/prism.css";
 import { Switch, Tooltip } from "antd";
+import { BulbOutlined } from '@ant-design/icons';
 import ScrollToTop from "react-scroll-to-top";
 import { copyObject, isNotAnEmptyObject, isNotNullNorUndefined } from "../utilities/helpers/ObjectVariableFunctions";
-import { isNotAnEmptyArray } from "../utilities/helpers/ArrayVariableValidators";
 import "../styling/HomePageComponent.css";
 import "../styling/ComponentStyling.css";
 import EntryComponent from "./EntryComponent";
 import { ConstantStrings } from "../utilities/constants/ConstantStrings";
-import { isNotEmptyString } from "../utilities/helpers/StringVariableValidators";
 import AIChatBot from "./AIChatBot.tsx";
 import "../styling/BotToggle.css"
 import "../styling/DeleteButtonStyling.css"
@@ -50,21 +49,9 @@ class HomePageComponent extends React.Component {
 
             isEditing: false,
             isChatBotVisible: false,
-            // Define the trash state here
-            trash: {
-                "entryTrashOne": {
-                    "insertDate": "2024-01-02",
-                    "title": "First Trash",
-                    "sections": [
-                        {
-                            "sectionTitle": "Description",
-                            "content": "first trash"
-                        }
-                    ]
-                }
-            },
-            showRecycleBinModal: false, // Control Recycle Bin Visibility
-            showUploadPopup: false,
+            trash: {},
+            showRecycleBinModal: false,
+            showUploadPopup: false
         };
 
         this.handleSelection = this.handleSelection.bind(this);
@@ -81,7 +68,9 @@ class HomePageComponent extends React.Component {
             else
                 this.setState({ showSidebar: !this.state.showSidebar });
         }
-        this.showCreateEditEntryPopup = entryType => this.setState({ showCreateEditEntryPopup: true, entryType })
+        this.showCreateEditEntryPopup = (entryType, entry = {}) => {
+            this.setState({ showCreateEditEntryPopup: true, entryType, entry })
+        }
         this.closeCreateEditEntryPopup = () => {
             this.setState({ showCreateEditEntryPopup: false, entryType: "" }, this.saveEntriesToLocalStorage)
         }
@@ -90,12 +79,19 @@ class HomePageComponent extends React.Component {
 
             localStorage.setItem("entries", JSON.stringify(entries));
         }
+
+        // after adding the feature where clicking on the text field, a popup for edit entries appears.
+        // there is a bug where when resizing the window, the onclick event to edit entires is also called.
+        // This is to check if user is resizing or clicking.
+        // is used in handleMouseDown and handleClick
+        this.isResizing = false;
     }
 
     componentDidMount() {
         Prism.highlightAll();
         window.addEventListener('keydown', this.handleKeyDown);
     }
+
     componentWillUnmount() {
         window.removeEventListener('keydown', this.handleKeyDown);
     }
@@ -120,83 +116,50 @@ class HomePageComponent extends React.Component {
         localStorage.setItem("isDarkMode", darkMode === true ? "true" : "false");
     }
 
-    changeEntries(entry) {
-        const { entries, entryType } = this.state;
-        let newEntries = copyObject(entries);
+    changeEntries(newEntry) {
+        const { entries, entry, entryType } = this.state;
 
-        let refactoredEntry = {};
+        let newEntries = {};
 
-        if (entryType === ConstantStrings.createStr) {
-            refactoredEntry["title"] = entry["title"];
-            refactoredEntry["insertDate"] = this.getCurrentDate();
-            refactoredEntry["sections"] = [];
-            Object.keys(entry)
-                .filter(v => !["title", "isCode"].includes(v))
-                .forEach(section => {
-                    refactoredEntry["sections"].push({
-                        "sectionTitle": isNotEmptyString(section) ? section.toUpperCase() : "",
-                        "content": entry[section],
-                        "isCode": entry["isCode"]
-                    })
-                })
+        // If editing an entry, then when copying list of previous entries skip the one being edited
+        // so that if it's title changes then it is overwritten. Otherwise, copy everything.
+        Object.keys(entries).forEach(v => {
+            if (v !== entry["title"])
+                newEntries[v] = entries[v];
+        })
 
-            newEntries[entry["title"]] = refactoredEntry;
+        // When creating a new entry if its title corresponds to an existing one, prevent it from being
+        // created by displaying an alert warning for the duplicate title.
+        let duplicateEntryName = false;
+        Object.keys(entries).forEach(entryTitle => {
+            if (entryTitle === newEntry["title"] && entry["title"] !== newEntry["title"]) {
+                duplicateEntryName = true;
+            }
+        })
+
+        if (duplicateEntryName) {
+            alert("The title for this new entry already exists. Please input another title.")
         } else {
-            refactoredEntry["title"] = entry["title"];
-            refactoredEntry["insertDate"] = entry["insertDate"];
-            refactoredEntry["updateDate"] = this.getCurrentDate();
-            refactoredEntry["sections"] = [];
-            Object.keys(entry)
-                .filter(v => !["title", "isCode"].includes(v))
-                .forEach(section => {
-                    refactoredEntry["sections"].push({
-                        "sectionTitle": isNotEmptyString(section) ? section.toUpperCase() : "",
-                        "content": entry[section],
-                        "isCode": entry["isCode"]
-                    })
-                })
+            let refactoredEntry = {};
+            refactoredEntry["title"] = newEntry["title"];
+            refactoredEntry["description"] = newEntry["description"];
+            refactoredEntry["isCode"] = newEntry["isCode"];
 
-            newEntries[entry["title"]] = refactoredEntry;
+            if (entryType === ConstantStrings.createStr) {
+                refactoredEntry["insertDate"] = this.getCurrentDate();
+            } else {
+                refactoredEntry["insertDate"] = newEntry["insertDate"];
+                refactoredEntry["updateDate"] = this.getCurrentDate();
+            }
+            newEntries[newEntry["title"]] = refactoredEntry;
+
+            this.setState({ entries: newEntries }, this.closeCreateEditEntryPopup);
+
+
+            // If title (key) changed, make sure the entry is still active
+            this.changeActiveKey(new MouseEvent(''), {name: refactoredEntry.title});
+
         }
-
-        this.setState({ entries: newEntries }, this.closeCreateEditEntryPopup);
-    }
-
-    // Andy's Implementation for Edit
-    handleContentChange = (sectionIndex, value) => {
-        const { activeKey, entries } = this.state;
-        const updatedSections = entries[activeKey].sections.map((section, index) => {
-            if (index === sectionIndex) {
-                return { ...section, content: value };
-            }
-            return section;
-        });
-
-        this.setState({
-            entries: {
-                ...entries,
-                [activeKey]: {
-                    ...entries[activeKey],
-                    sections: updatedSections,
-                    updateDate: this.getCurrentDate()
-                }
-            }
-        }, this.saveEntriesToLocalStorage);
-    }
-
-    // Andy's Implementation for Edit Titles
-    handleTitleChange = (value) => {
-        const { activeKey, entries } = this.state;
-
-        this.setState({
-            entries: {
-                ...entries,
-                [activeKey]: {
-                    ...entries[activeKey],
-                    title: value
-                }
-            }
-        });
     }
 
     // Used to Hide or show AI ChatBot window
@@ -293,18 +256,21 @@ class HomePageComponent extends React.Component {
         // Make the new entry active
         this.changeActiveKey(new MouseEvent(''), { name: newKey });
 
+        // Edit note after copy
+        this.showCreateEditEntryPopup(ConstantStrings.editStr, newEntries[newKey]);
+
         console.log(`Entry duplicated as ${newTitle}`);
     }
 
     handleBackupVault = () => {
         const { entries } = this.state;
-    
+
         // Prompt the user for a backup file name
         const fileName = prompt("Enter the backup file name:", "vault-backup");
-    
+
         // Use default if no file name is provided or if canceled
         const backupFileName = fileName ? `${fileName}.json` : 'vault-backup.json';
-    
+
         const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -314,10 +280,10 @@ class HomePageComponent extends React.Component {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-    
+
         console.log(`Vault backed up to ${backupFileName}`);
     }
-    
+
 
     handleRestoreVault = (data) => {
         this.setState({ entries: data });
@@ -337,14 +303,13 @@ class HomePageComponent extends React.Component {
         }
     }
 
-    
 
     // Up/Down Arrow Key navigates to previous/next notes list
     handleKeyDown = (e) => {
         const { entries, activeKey } = this.state;
         const entryKeys = Object.keys(entries);
         const currentIndex = entryKeys.indexOf(activeKey);
-    
+
         if (e.key === 'ArrowDown') {
             const nextIndex = currentIndex + 1 < entryKeys.length ? currentIndex + 1 : currentIndex;
             this.setState({ activeKey: entryKeys[nextIndex] });
@@ -353,6 +318,26 @@ class HomePageComponent extends React.Component {
             this.setState({ activeKey: entryKeys[prevIndex] });
         }
     }
+
+    // used to check if user is trying to click to edit, or click+hold to resize
+    handleMouseDown = (event) => {
+        // Check if the click is near the bottom-right of the text area (resize handle position)
+        const { target } = event;
+        const isResizeHandle =
+            event.clientX >= target.getBoundingClientRect().right - 10 &&
+            event.clientY >= target.getBoundingClientRect().bottom - 10;
+
+        this.isResizing = isResizeHandle;
+    }
+    // used to check if user is trying to click to edit, or click+hold to resize
+    handleClick = () => {
+        if (!this.isResizing) {
+            this.showCreateEditEntryPopup(ConstantStrings.editStr, this.state.entries[this.state.activeKey]);
+            //showCreateEditEntryPopup(ConstantStrings.editStr, entries[activeKey])
+        }
+        this.isResizing = false; // Reset after each click
+    }
+
 
     render() {
         const {
@@ -423,120 +408,77 @@ class HomePageComponent extends React.Component {
         if (entries.hasOwnProperty(activeKey)
             && isNotAnEmptyObject(entries[activeKey])) {
 
-            let { title, insertDate, updateDate, sections } = entries[activeKey];
-
-            let entryContents = [];
-
-            // If there is data, Build Content to show in view
-            if (isNotAnEmptyArray(sections)) {
-                // Break down each section into individual const SectionTitle, content, isCode
-                // Note, this code treats each section individually.
-                // IDK how index is working here
-                entryContents = sections.map((section, index) => {
-                    const { sectionTitle, content, isCode } = section;
-
-                    // if a section isCode, just display
-                    //if !isCode, then display a text area
-                    let renderedContent = isCode
-                        ? (<section className={"codeSample"}>
-                            <pre className="language-javascript">
-                                <code>{content}</code>
-                            </pre>
-                        </section>
-                        ) : (
-                            // this segment styling is not applying?
-                            <Segment raised inverted={darkMode}>
-                                <Form.Control
-                                    type="text" placeholder={sectionTitle}
-                                    // updates when user types
-                                    onChange={(e) => this.handleContentChange(index, e.target.value)}
-                                    value={content}
-                                    // Disable editing when not in editing mode
-                                    disabled={!isEditing}
-                                />
-                            </Segment>
-                        );
-
-                    // Display title and content for each section
-                    return (
-                        <Row noGutters style={{ paddingBottom: ".5em", paddingLeft: "2em" }} key={index}>
-                            <Col xs={1}>{sectionTitle}</Col>
-                            <Col xs={11}>{renderedContent}</Col>
-                        </Row>
-                    );
-                });
-            }
+            let { title, insertDate, updateDate, description, isCode } = entries[activeKey];
 
             // why is content defined here, shouldn't it be defined before it is used in line 263?
             content = (
                 <Segment raised inverted={darkMode} style={{ marginTop: "10px" }}>
-                    <Row noGutters style={{ paddingBottom: ".5em", paddingLeft: "1em" }}>
-                        {/* is isEditing is true, the title becomes an editable text field */}
-                        {isEditing ? (
-                            <Form.Group>
-                                <Form.Label>Entry Title</Form.Label>
-                                <Form.Control
-                                    type="text" placeholder={"Entry Title"}
-                                    // updates when user types
-                                    onChange={(e) => this.handleTitleChange(e.target.value)}
-                                    value={title}
-                                    // Disable editing when not in editing mode
-                                    disabled={!isEditing}
-                                />
-                            </Form.Group>
-                        ) : (
-                            // otherwise, just shows the title
-                            <h4>{title}</h4>
-                        )}
-                    </Row>
-
-                    {/* Shows Date on view*/}
-                    {!isEditing && isNotNullNorUndefined(insertDate) &&
-                        <Row noGutters style={{ paddingLeft: "1em" }}>
-                            <h6>Last Updated: {isNotNullNorUndefined(updateDate) ? updateDate : insertDate}</h6>
-                        </Row>}
-
-                    {!isEditing && isNotNullNorUndefined(insertDate) &&
+                    <Container fluid>
                         <Row noGutters style={{ paddingBottom: ".5em", paddingLeft: "1em" }}>
-                            <h6>Added: {insertDate}</h6>
+                            <h4>{title}</h4>
                         </Row>
-                    }
 
-                    {/* Show contents of all Sections */}
-                    {entryContents}
+                        {/* Shows Date on view*/}
+                        {!isEditing && isNotNullNorUndefined(insertDate) &&
+                            <Row noGutters style={{ paddingLeft: "1em" }}>
+                                <h6>Last Updated: {isNotNullNorUndefined(updateDate) ? updateDate : insertDate}</h6>
+                            </Row>}
 
-                    {/* Show Edit/Save and Delete */}
-                    <div>
-                        {/* if not editing, show an edit button */}
-                        {/* if editing, show a save button */}
-                        {isEditing ? (
-                            <Tooltip placement="top" title={'Save'} arrow={true}>
-                                <Button icon onClick={() => this.setState({ isEditing: false })}>
-                                    <Icon name="save" />
-                                </Button>
-                            </Tooltip>
-                        ) : (
-                            <Tooltip placement="top" title={'Edit'} arrow={true}>
-                                <Button icon onClick={() => this.setState({ isEditing: true })}>
+                        {!isEditing && isNotNullNorUndefined(insertDate) &&
+                            <Row noGutters style={{ paddingBottom: ".5em", paddingLeft: "1em" }}>
+                                <h6>Added: {insertDate}</h6>
+                            </Row>
+                        }
+
+                        {/* Text (Description) field */}
+                        <Row noGutters style={{ padding: "0 2em .5em 2em" }}>
+                            {isCode ? (
+                                <section className={"codeSample"}>
+                                    <pre className="language-javascript">
+                                        <code>{description}</code>
+                                    </pre>
+                                </section>
+                            ) : (
+                                <Segment raised inverted={darkMode}>
+                                    <Form.Control
+                                        plaintext readOnly
+                                        name="description" as="textarea"
+                                        value={description}
+                                        className={darkMode ? "darkMode description" : ""}
+                                        // when clicking on text field, will open edit options
+
+                                        onMouseDown={this.handleMouseDown}
+                                        onClick={this.handleClick}
+                                    />
+                                </Segment>
+                            )}
+                        </Row>
+
+                        {/* Show Edit/Save and Delete */}
+                        <div style={{ paddingTop: "10px" }}>
+                            {/* Edit Button */}
+                            <Tooltip placement="bottom" title={'Edit'} arrow={true}>
+                                <Button icon
+                                    onClick={() => this.showCreateEditEntryPopup(ConstantStrings.editStr, entries[activeKey])}>
                                     <Icon name="edit" />
                                 </Button>
                             </Tooltip>
-                        )}
 
-                        {/* Delete Button next to Edit */}
-                        <Tooltip placement="top" title={'Delete'} arrow={true}>
-                            <Button icon onClick={() => this.handleDeleteEntry(activeKey)}>
-                                <Icon name="trash alternate" />
-                            </Button>
-                        </Tooltip>
+                            {/* Duplicate Button next to Delete */}
+                            <Tooltip placement="bottom" title={'Clone'} arrow={true}>
+                                <Button icon onClick={() => this.handleDuplicateEntry(activeKey)}>
+                                    <Icon name="copy" />
+                                </Button>
+                            </Tooltip>
 
-                        {/* Duplicate Button next to Delete */}
-                        <Tooltip placement="top" title={'Clone'} arrow={true}>
-                            <Button icon onClick={() => this.handleDuplicateEntry(activeKey)}>
-                                <Icon name="copy" />
-                            </Button>
-                        </Tooltip>
-                    </div>
+                            {/* Delete Button next to Edit */}
+                            <Tooltip placement="bottom" title={'Delete'} arrow={true}>
+                                <Button icon color="red" onClick={() => this.handleDeleteEntry(activeKey)}>
+                                    <Icon name="trash alternate" />
+                                </Button>
+                            </Tooltip>
+                        </div>
+                    </Container>
                 </Segment>
             );
         }
@@ -634,11 +576,10 @@ class HomePageComponent extends React.Component {
                     entryType={entryType}
                     closePopup={this.closeCreateEditEntryPopup} />}
 
-
                 {/* ChatBot Button */}
-                <button className="chatbot-toggle-button" onClick={this.toggleChatBot}>
-                    {isChatBotVisible ? 'Close' : 'Chat'}
-                </button>
+                <Button className="chatbot-toggle-button" color={'blue'} onClick={this.toggleChatBot}>
+                    {isChatBotVisible ? 'Close chat' : <><BulbOutlined /> Question about your notes? Click to chat.</>}
+                </Button>
 
                 {/* ChatBot Component, pass entries as props */}
                 {isChatBotVisible && (
